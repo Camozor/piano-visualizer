@@ -1,9 +1,11 @@
+use anyhow::Result;
+use chrono::{DateTime, Local};
 use crossterm::{
-    ExecutableCommand, QueueableCommand, cursor,
+    cursor,
     style::{self, Color, Stylize},
-    terminal,
+    terminal, ExecutableCommand, QueueableCommand,
 };
-use std::io::{self, Stdout, Write};
+use std::io::{self, BufWriter, Stdout, Write};
 use std::{thread, time};
 
 // white keys =  52, black keys = 36
@@ -17,39 +19,82 @@ const BLACK_KEYS: [u16; 36] = [
     61, 64, 66, 69, 71, 73, 76, 78, 81, 83, 85,
 ];
 
-fn main() -> io::Result<()> {
-    let mut drawer = Drawer::new();
-    drawer.stdout.execute(terminal::EnterAlternateScreen)?;
-    drawer.stdout.execute(cursor::Hide)?;
+const FRAME_MS: u64 = 300;
+const TIME_NOTE_ON_SCREEN_MS: u32 = 5_000;
 
-    let _ = run_loop(&mut drawer);
+fn main() -> Result<()> {
+    let mut visualizer = Visualizer::new();
+    let _ = visualizer.run_loop();
 
-    let _ = drawer.stdout.execute(cursor::Show);
-    let _ = drawer.stdout.execute(terminal::LeaveAlternateScreen);
+    let _ = visualizer.drawer.stdout.execute(cursor::Show);
+    let _ = visualizer
+        .drawer
+        .stdout
+        .execute(terminal::LeaveAlternateScreen);
 
     Ok(())
 }
 
-fn run_loop(drawer: &mut Drawer) -> io::Result<()> {
-    loop {
-        drawer.clear()?;
-        drawer.draw_piano()?;
+#[derive(Debug)]
+struct Drawer {
+    stdout: BufWriter<Stdout>,
+    width: u16,
+    height: u16,
+}
 
-        let ten_millis = time::Duration::from_millis(10);
-        thread::sleep(ten_millis);
+#[derive(Debug)]
+struct Visualizer {
+    drawer: Drawer,
+    notes: Vec<Note>,
+}
+
+impl Visualizer {
+    pub fn new() -> Self {
+        let drawer = Drawer::new();
+
+        let visualizer = Visualizer {
+            drawer,
+            notes: vec![Note {
+                key: 3,
+                start: Local::now(),
+                end: None,
+            }],
+        };
+
+        visualizer
+    }
+
+    pub fn run_loop(&mut self) -> Result<()> {
+        // let dt = Local::now();
+
+        self.drawer.clear()?;
+        self.drawer.stdout.execute(terminal::EnterAlternateScreen)?;
+        self.drawer.stdout.execute(cursor::Hide)?;
+
+        loop {
+            self.drawer.stdout.queue(cursor::MoveTo(0, 0))?;
+            let _ = self.drawer.draw_piano();
+            let _ = self.drawer.draw_notes(&self.notes);
+            self.drawer.stdout.queue(cursor::MoveTo(0, 0))?;
+            self.drawer.stdout.flush()?;
+
+            let frame_duration = time::Duration::from_millis(FRAME_MS);
+            thread::sleep(frame_duration);
+        }
     }
 }
 
 #[derive(Debug)]
-struct Drawer {
-    stdout: Stdout,
-    width: u16,
-    height: u16,
+struct Note {
+    key: u16,
+    start: DateTime<Local>,
+    end: Option<DateTime<Local>>,
 }
 
 impl Drawer {
     pub fn new() -> Self {
         let stdout = io::stdout();
+        let stdout = BufWriter::new(stdout);
 
         let size = terminal::size();
         let size = size.unwrap_or((0, 0));
@@ -61,7 +106,7 @@ impl Drawer {
         }
     }
 
-    pub fn draw_piano(&mut self) -> io::Result<()> {
+    pub fn draw_piano(&mut self) -> Result<()> {
         let note_height = WHITE_NOTE_HEIGHT.min(self.height);
         let start_y = self.height.saturating_sub(note_height);
 
@@ -73,23 +118,20 @@ impl Drawer {
 
         let stop_y = self
             .height
-            .saturating_sub(WHITE_NOTE_HEIGHT - BLACK_NOTE_HEIGHT);
+            .saturating_sub(WHITE_NOTE_HEIGHT - BLACK_NOTE_HEIGHT + 1);
         for y in start_y..stop_y {
             for x in 0..self.width {
-                let key = self.get_key(x);
+                let key = self.get_key_note(x);
                 if BLACK_KEYS.contains(&key) {
                     self.draw_pixel(x, y, Color::DarkGrey)?;
                 }
             }
         }
 
-        let end_y = self.height.saturating_sub(1);
-        self.stdout.queue(cursor::MoveTo(self.width, end_y))?;
-        self.stdout.flush()?;
         Ok(())
     }
 
-    pub fn draw_pixel(&mut self, x: u16, y: u16, color: Color) -> io::Result<()> {
+    fn draw_pixel(&mut self, x: u16, y: u16, color: Color) -> Result<()> {
         self.stdout
             .queue(cursor::MoveTo(x, y))?
             .queue(style::PrintStyledContent("█".stylize().with(color)))?;
@@ -97,8 +139,34 @@ impl Drawer {
         Ok(())
     }
 
+    fn draw_notes(&mut self, notes: &[Note]) -> Result<()> {
+        for note in notes {
+            let _ = self.draw_note(note);
+        }
+
+        Ok(())
+    }
+
+    fn draw_note(&mut self, note: &Note) -> Result<()> {
+        let stop_y = self.height.saturating_sub(WHITE_NOTE_HEIGHT);
+
+        for x in 0..self.width {
+            let key = self.get_key_note(x);
+            if note.key != key {
+                continue;
+            }
+            for y in 0..stop_y {
+                if note.key == key {
+                    self.draw_pixel(x, y, Color::Red)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Returns the key (0 to 87) from a x position
-    pub fn get_key(&self, x_pos: u16) -> u16 {
+    fn get_key_note(&self, x_pos: u16) -> u16 {
         let ratio = x_pos as f32 / self.width as f32;
         let key = ratio * TOTAL_KEYS as f32;
 
@@ -106,7 +174,7 @@ impl Drawer {
         key
     }
 
-    pub fn clear(&mut self) -> io::Result<()> {
+    pub fn clear(&mut self) -> Result<()> {
         self.stdout
             .execute(terminal::Clear(terminal::ClearType::All))?
             .execute(cursor::MoveTo(0, 0))?;
