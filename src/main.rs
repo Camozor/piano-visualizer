@@ -1,9 +1,10 @@
 use crossterm::{
-    cursor,
+    ExecutableCommand, QueueableCommand, cursor,
     style::{self, Color, Stylize},
-    terminal, ExecutableCommand, QueueableCommand,
+    terminal,
 };
 use std::io::{self, Stdout, Write};
+use std::{thread, time};
 
 // white keys =  52, black keys = 36
 const TOTAL_KEYS: u8 = 88;
@@ -18,11 +19,25 @@ const BLACK_KEYS: [u16; 36] = [
 
 fn main() -> io::Result<()> {
     let mut drawer = Drawer::new();
+    drawer.stdout.execute(terminal::EnterAlternateScreen)?;
+    drawer.stdout.execute(cursor::Hide)?;
 
-    drawer.clear()?;
-    drawer.draw_piano()?;
+    let _ = run_loop(&mut drawer);
+
+    let _ = drawer.stdout.execute(cursor::Show);
+    let _ = drawer.stdout.execute(terminal::LeaveAlternateScreen);
 
     Ok(())
+}
+
+fn run_loop(drawer: &mut Drawer) -> io::Result<()> {
+    loop {
+        drawer.clear()?;
+        drawer.draw_piano()?;
+
+        let ten_millis = time::Duration::from_millis(10);
+        thread::sleep(ten_millis);
+    }
 }
 
 #[derive(Debug)]
@@ -69,7 +84,7 @@ impl Drawer {
         }
 
         let end_y = self.height.saturating_sub(1);
-        self.stdout.queue(cursor::MoveTo(0, end_y))?;
+        self.stdout.queue(cursor::MoveTo(self.width, end_y))?;
         self.stdout.flush()?;
         Ok(())
     }
