@@ -1,9 +1,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use crossterm::{
-    cursor,
+    ExecutableCommand, QueueableCommand, cursor,
     style::{self, Color, Stylize},
-    terminal, ExecutableCommand, QueueableCommand,
+    terminal,
 };
 use std::io::{self, BufWriter, Stdout, Write};
 use std::{thread, time};
@@ -109,22 +109,22 @@ impl Drawer {
     pub fn draw_piano(&mut self) -> Result<()> {
         let note_height = WHITE_NOTE_HEIGHT.min(self.height);
         let start_y = self.height.saturating_sub(note_height);
+        let black_stop_y = self
+            .height
+            .saturating_sub(WHITE_NOTE_HEIGHT - BLACK_NOTE_HEIGHT);
+
+        let is_black_col: Vec<bool> = (0..self.width)
+            .map(|x| BLACK_KEYS.contains(&self.get_key_note(x)))
+            .collect();
 
         for y in start_y..self.height {
             for x in 0..self.width {
-                self.draw_pixel(x, y, Color::White)?;
-            }
-        }
-
-        let stop_y = self
-            .height
-            .saturating_sub(WHITE_NOTE_HEIGHT - BLACK_NOTE_HEIGHT + 1);
-        for y in start_y..stop_y {
-            for x in 0..self.width {
-                let key = self.get_key_note(x);
-                if BLACK_KEYS.contains(&key) {
-                    self.draw_pixel(x, y, Color::DarkGrey)?;
-                }
+                let color = if y < black_stop_y && is_black_col[x as usize] {
+                    Color::DarkGrey
+                } else {
+                    Color::White
+                };
+                self.draw_pixel(x, y, color)?;
             }
         }
 
@@ -171,7 +171,7 @@ impl Drawer {
         let key = ratio * TOTAL_KEYS as f32;
 
         let key = key.floor() as u16;
-        key
+        key.min((TOTAL_KEYS - 1) as u16)
     }
 
     pub fn clear(&mut self) -> Result<()> {
