@@ -1,0 +1,1 @@
+pub const TIME_NOTE_ON_SCREEN_MS: u32 = 5_000;
