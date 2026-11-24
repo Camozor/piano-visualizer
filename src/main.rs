@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, TimeDelta};
 use crossterm::{
     ExecutableCommand, QueueableCommand, cursor,
     style::{self, Color, Stylize},
@@ -19,7 +19,7 @@ const BLACK_KEYS: [u16; 36] = [
     61, 64, 66, 69, 71, 73, 76, 78, 81, 83, 85,
 ];
 
-const FRAME_MS: u64 = 300;
+const FRAME_MS: u64 = 5;
 const TIME_NOTE_ON_SCREEN_MS: u32 = 5_000;
 
 fn main() -> Result<()> {
@@ -36,13 +36,6 @@ fn main() -> Result<()> {
 }
 
 #[derive(Debug)]
-struct Drawer {
-    stdout: BufWriter<Stdout>,
-    width: u16,
-    height: u16,
-}
-
-#[derive(Debug)]
 struct Visualizer {
     drawer: Drawer,
     notes: Vec<Note>,
@@ -54,19 +47,24 @@ impl Visualizer {
 
         let visualizer = Visualizer {
             drawer,
-            notes: vec![Note {
-                key: 3,
-                start: Local::now(),
-                end: None,
-            }],
+            notes: vec![
+                Note {
+                    key: 3,
+                    start: Local::now(),
+                    end: None,
+                },
+                Note {
+                    key: 7,
+                    start: Local::now() - TimeDelta::milliseconds(3000),
+                    end: Some(Local::now() - TimeDelta::milliseconds(1000)),
+                },
+            ],
         };
 
         visualizer
     }
 
     pub fn run_loop(&mut self) -> Result<()> {
-        // let dt = Local::now();
-
         self.drawer.clear()?;
         self.drawer.stdout.execute(terminal::EnterAlternateScreen)?;
         self.drawer.stdout.execute(cursor::Hide)?;
@@ -85,10 +83,10 @@ impl Visualizer {
 }
 
 #[derive(Debug)]
-struct Note {
-    key: u16,
-    start: DateTime<Local>,
-    end: Option<DateTime<Local>>,
+struct Drawer {
+    stdout: BufWriter<Stdout>,
+    width: u16,
+    height: u16,
 }
 
 impl Drawer {
@@ -139,6 +137,14 @@ impl Drawer {
         Ok(())
     }
 
+    fn clear_pixel(&mut self, x: u16, y: u16) -> Result<()> {
+        self.stdout
+            .queue(cursor::MoveTo(x, y))?
+            .queue(style::PrintStyledContent(" ".reset()))?;
+
+        Ok(())
+    }
+
     fn draw_notes(&mut self, notes: &[Note]) -> Result<()> {
         for note in notes {
             let _ = self.draw_note(note);
@@ -148,16 +154,37 @@ impl Drawer {
     }
 
     fn draw_note(&mut self, note: &Note) -> Result<()> {
-        let stop_y = self.height.saturating_sub(WHITE_NOTE_HEIGHT);
+        let _ = self.clear_note(note);
+
+        let max_y = self.height.saturating_sub(WHITE_NOTE_HEIGHT);
+        let start_y = note.compute_start_note_y(max_y);
+        let end_y = note.compute_end_note_y(max_y);
 
         for x in 0..self.width {
             let key = self.get_key_note(x);
             if note.key != key {
                 continue;
             }
-            for y in 0..stop_y {
+            for y in start_y..end_y {
                 if note.key == key {
                     self.draw_pixel(x, y, Color::Red)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn clear_note(&mut self, note: &Note) -> Result<()> {
+        let max_y = self.height.saturating_sub(WHITE_NOTE_HEIGHT);
+        for x in 0..self.width {
+            let key = self.get_key_note(x);
+            if note.key != key {
+                continue;
+            }
+            for y in 0..max_y {
+                if note.key == key {
+                    self.clear_pixel(x, y)?;
                 }
             }
         }
@@ -180,5 +207,47 @@ impl Drawer {
             .execute(cursor::MoveTo(0, 0))?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct Note {
+    key: u16,
+    start: DateTime<Local>,
+    end: Option<DateTime<Local>>,
+}
+
+impl Note {
+    /// The highest point for the note
+    pub fn compute_start_note_y(&self, max_height: u16) -> u16 {
+        let duration = self.start - Local::now();
+        let millis = duration.num_milliseconds().abs();
+        let ratio = millis as f32 / TIME_NOTE_ON_SCREEN_MS as f32;
+        let height = (ratio * max_height as f32).floor();
+
+        if height as u16 >= max_height {
+            return 0;
+        }
+
+        max_height - height as u16
+    }
+
+    /// The lowest point for the note
+    pub fn compute_end_note_y(&self, max_height: u16) -> u16 {
+        match self.end {
+            Some(end) => {
+                let duration = end - Local::now();
+                let millis = duration.num_milliseconds().abs();
+                let ratio = millis as f32 / TIME_NOTE_ON_SCREEN_MS as f32;
+                let height = (ratio * max_height as f32).floor();
+
+                if height as u16 >= max_height {
+                    return 0;
+                }
+
+                max_height - height as u16
+            }
+            None => max_height,
+        }
     }
 }
