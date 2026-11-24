@@ -78,7 +78,16 @@ impl Visualizer {
 
             let frame_duration = time::Duration::from_millis(FRAME_MS);
             thread::sleep(frame_duration);
+            self.remove_old_notes();
         }
+    }
+
+    fn remove_old_notes(&mut self) {
+        let now = Local::now();
+        let max_age = TimeDelta::milliseconds(TIME_NOTE_ON_SCREEN_MS as i64);
+
+        self.notes
+            .retain(|note| note.end.is_none() || note.end.is_some_and(|end| now - end < max_age));
     }
 }
 
