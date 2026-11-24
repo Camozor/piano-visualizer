@@ -1,10 +1,9 @@
-use std::time;
-
 use anyhow::Result;
 use chrono::{Local, TimeDelta};
 use crossterm::{ExecutableCommand, QueueableCommand, cursor, terminal};
 use std::io::Write;
 use std::thread;
+use std::time;
 
 use crate::{constants::TIME_NOTE_ON_SCREEN_MS, drawer::Drawer, note::Note};
 

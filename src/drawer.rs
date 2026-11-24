@@ -1,3 +1,7 @@
+use crate::{
+    constants::{BLACK_KEYS, BLACK_NOTE_HEIGHT, TOTAL_KEYS, WHITE_NOTE_HEIGHT},
+    note::Note,
+};
 use anyhow::Result;
 use crossterm::{
     ExecutableCommand, QueueableCommand, cursor,
@@ -5,19 +9,6 @@ use crossterm::{
     terminal,
 };
 use std::io::{self, BufWriter, Stdout};
-
-use crate::note::Note;
-
-// white keys =  52, black keys = 36
-const TOTAL_KEYS: u8 = 88;
-
-const WHITE_NOTE_HEIGHT: u16 = 10;
-const BLACK_NOTE_HEIGHT: u16 = 6;
-
-const BLACK_KEYS: [u16; 36] = [
-    1, 4, 6, 9, 11, 13, 16, 18, 21, 23, 25, 28, 30, 33, 35, 37, 40, 42, 45, 47, 49, 52, 54, 57, 59,
-    61, 64, 66, 69, 71, 73, 76, 78, 81, 83, 85,
-];
 
 #[derive(Debug)]
 pub struct Drawer {

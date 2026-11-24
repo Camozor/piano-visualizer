@@ -1,6 +1,5 @@
-use chrono::{DateTime, Local};
-
 use crate::constants::TIME_NOTE_ON_SCREEN_MS;
+use chrono::{DateTime, Local};
 
 #[derive(Debug)]
 pub struct Note {
