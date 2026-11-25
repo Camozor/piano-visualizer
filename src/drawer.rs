@@ -82,7 +82,7 @@ impl Drawer {
     }
 
     fn draw_note(&mut self, note: &Note) -> Result<()> {
-        let _ = self.clear_note(note);
+        let _ = self.clear_note(note.key);
 
         let max_y = self.height.saturating_sub(WHITE_NOTE_HEIGHT);
         let start_y = note.compute_start_note_y(max_y);
@@ -103,15 +103,15 @@ impl Drawer {
         Ok(())
     }
 
-    fn clear_note(&mut self, note: &Note) -> Result<()> {
+    pub fn clear_note(&mut self, note: u16) -> Result<()> {
         let max_y = self.height.saturating_sub(WHITE_NOTE_HEIGHT);
         for x in 0..self.width {
             let key = self.get_key_note(x);
-            if note.key != key {
+            if note != key {
                 continue;
             }
             for y in 0..max_y {
-                if note.key == key {
+                if note == key {
                     self.clear_pixel(x, y)?;
                 }
             }

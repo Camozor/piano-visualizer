@@ -60,7 +60,28 @@ impl Visualizer {
         let now = Local::now();
         let max_age = TimeDelta::milliseconds(TIME_NOTE_ON_SCREEN_MS as i64);
 
+        let old_notes: Vec<u16> = self.notes.iter().map(|note| note.key).collect();
+
         self.notes
             .retain(|note| note.end.is_none() || note.end.is_some_and(|end| now - end < max_age));
+
+        let new_notes: Vec<u16> = self.notes.iter().map(|note| note.key).collect();
+
+        let diff = substract(old_notes, new_notes);
+
+        for note in diff {
+            let _ = self.drawer.clear_note(note);
+        }
     }
+}
+
+fn substract(vec1: Vec<u16>, vec2: Vec<u16>) -> Vec<u16> {
+    let mut substracted = vec![];
+    for e1 in vec1 {
+        if !vec2.contains(&e1) {
+            substracted.push(e1);
+        }
+    }
+
+    substracted
 }
